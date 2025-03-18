@@ -7,6 +7,12 @@ const meetingRoute = require("./Routes/meetingRoute");
 const documentRoute = require("./Routes/documentRoute");
 const tharavRoutes = require("./Routes/tharavRoute");
 const purposeRoute = require("./Routes/purposeRoute");
+const schoolRoutes = require('./Routes/SchoolRoute');
+const fundRoutes = require('./Routes/FundRoute');
+const remarksRoute = require("./Routes/remarksRoute");
+const fundreq_hmRoutes = require('./Routes/fundreq_hmRoutes')
+
+
 
 const path = require("path");
 
@@ -30,21 +36,23 @@ app.use(cors({
 
 app.use(express.json());
 
-// Middleware to log requests (useful for debugging)
-app.use((req, res, next) => {
-    console.log(`Incoming request: ${req.method} ${req.url}`);
-    next();
-});
-
 // Routes
 app.use('/api', loginRoute);
 app.use('/api', expenceRoute);
 app.use('/api/member', committeeRoutes);
 app.use('/api/meeting', meetingRoute);
 app.use('/api/documents', documentRoute);
-app.use('/api/tharav', tharavRoutes);
+app.use('/api/tharav', tharavRoutes); 
 app.use('/api/purpose', purposeRoute);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/api/remarks", remarksRoute);
+app.use('/api/fundreqhm',fundreq_hmRoutes);
+
+
+app.use('/api', schoolRoutes);
+app.use("/api/remarks", remarksRoute);
+app.use('/api', fundRoutes);
+
 
 app.get('/', (req, res) => {
     res.send("Server is running");
@@ -55,7 +63,6 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-// Test API for debugging
 app.post("/api/expenceData", (req, res) => {
     console.log("Received request:", req.body);
     res.json({ message: "API working" });

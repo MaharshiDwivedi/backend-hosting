@@ -1,23 +1,60 @@
 const connection = require("../Config/Connection");
 const path = require("path");
 
-// Fetch all meetings
-async function getAllMeetings() {
+// // Fetch all meetings
+// async function getAllMeetings() {
+//   try {
+//     const [rows] = await connection.execute(
+//       "SELECT meeting_id, meeting_record FROM tbl_new_smc WHERE status='Active'"
+//     );
+
+//     // Return message if no meetings found
+//     if (rows.length === 0) {
+//       return { message: "No meetings found" };
+//     }
+
+//     return rows.map((row) => {
+//       const parts = row.meeting_record.split("|");
+//       return {
+//         meeting_id: row.meeting_id, // Ensure ID consistency
+//         meeting_number: parts[0] || row.meeting_id, // Use meeting_id if missing
+//         school_id: parts[1] || null,
+//         user_id: parts[2] || null,
+//         meeting_date: parts[3] || null,
+//         joined_member_length: parts[4] || "0",
+//         image_url: parts[5] || "default.jpg",
+//         latitude: parts[6] || "0.0000",
+//         longitude: parts[7] || "0.0000",
+//         address: parts[8] || "Unknown",
+//         created_at: parts[9] || null,
+//         updated_at: parts[10] || null,
+//         member_id: parts[11] || null,
+//         raw_meeting_record: row.meeting_record,
+//       };
+//     });
+//   } catch (error) {
+//     console.error("Error in getAllMeetings:", error.message);
+//     return { error: "Unable to fetch meetings. Please try again later." };
+//   }
+// }
+
+// Fetch meetings for a specific school
+async function getMeetingsBySchoolId(schoolId) {
   try {
     const [rows] = await connection.execute(
-      "SELECT meeting_id, meeting_record FROM tbl_new_smc WHERE status='Active'"
+      "SELECT meeting_id, meeting_record FROM tbl_new_smc WHERE status='Active' AND meeting_record LIKE ?",
+      [`%${schoolId}|%`] // Filter by school_id
     );
 
-    // Return message if no meetings found
     if (rows.length === 0) {
-      return { message: "No meetings found" };
+      return { message: "No meetings found for this school" };
     }
 
     return rows.map((row) => {
       const parts = row.meeting_record.split("|");
       return {
-        meeting_id: row.meeting_id, // Ensure ID consistency
-        meeting_number: parts[0] || row.meeting_id, // Use meeting_id if missing
+        meeting_id: row.meeting_id,
+        meeting_number: parts[0] || row.meeting_id,
         school_id: parts[1] || null,
         user_id: parts[2] || null,
         meeting_date: parts[3] || null,
@@ -29,14 +66,14 @@ async function getAllMeetings() {
         created_at: parts[9] || null,
         updated_at: parts[10] || null,
         member_id: parts[11] || null,
-        raw_meeting_record: row.meeting_record,
       };
     });
   } catch (error) {
-    console.error("Error in getAllMeetings:", error.message);
+    console.error("Error in getMeetingsBySchoolId:", error.message);
     return { error: "Unable to fetch meetings. Please try again later." };
   }
 }
+
 
 // Get the next meeting number for a specific school
 async function getNextMeetingNumberForSchool(schoolId) {
@@ -81,7 +118,7 @@ async function addMeeting(meeting) {
       user_id = null,
       meeting_date = new Date().toISOString().split("T")[0],
       selected_member_length: joined_member_length = "0",
-      image_url = "default.jpg",
+      image_url = "default.jpg", // Default photo name
       latitude = "0.0000",
       longitude = "0.0000",
       address = "Unknown",
@@ -92,39 +129,48 @@ async function addMeeting(meeting) {
     // Get next meeting number for this school
     const meetingNumber = await getNextMeetingNumberForSchool(school_id);
 
-    // Extract only filename + extension
-    const photoName = image_url ? path.basename(image_url) : "default.jpg";
-    
-    // Default updated_at value
-    const updated_at = "0000-00-00 00:00:00";
+    // ✅ Extract only filename + extension
+    const getFileNameWithExtension = (filePath) => {
+      if (!filePath) return "default.jpg"; // Default value
+      return path.basename(filePath); // Extract only filename + extension
+    };
 
-    // Insert meeting with all data at once
+    const photoName = getFileNameWithExtension(image_url);
+
+    // Insert a blank record to get the correct meeting_id
     const [result] = await connection.execute(
-      `INSERT INTO tbl_new_smc (
-        status, 
-        meeting_record
-      ) VALUES (?, ?)`,
-      [
-        "Active",
-        [
-          meetingNumber,
-          school_id,
-          user_id,
-          meeting_date,
-          joined_member_length,
-          photoName,
-          latitude,
-          longitude,
-          address,
-          created_at,
-          updated_at,
-          member_id
-        ].join("|")
-      ]
+      "INSERT INTO tbl_new_smc (status) VALUES ('Active')"
     );
 
-    const meetingId = result.insertId;
-    
+    // Fetch the generated meeting_id
+    const [newMeeting] = await connection.execute("SELECT LAST_INSERT_ID() as meeting_id");
+    const meetingId = newMeeting[0].meeting_id;
+
+    // ✅ Ensure `updated_at` is initially "0000-00-00 00:00:00"
+    const updated_at = "0000-00-00 00:00:00";
+
+    // Create meeting record with school-specific meeting number first
+    const newMeetingRecord = [
+      meetingNumber, // ✅ Use school-specific meeting number
+      school_id ?? null,
+      user_id ?? null,
+      meeting_date ?? null,
+      joined_member_length ?? "0",
+      photoName, // ✅ Store only filename.extension
+      latitude ?? "0.0000",
+      longitude ?? "0.0000",
+      address ?? "Unknown",
+      created_at ?? null,
+      updated_at, // ✅ Set default updated_at
+      member_id ?? "",
+    ].join("|");
+
+    // Update the inserted record with correct meeting data
+    await connection.execute(
+      "UPDATE tbl_new_smc SET meeting_record = ? WHERE meeting_id = ?",
+      [newMeetingRecord, meetingId]
+    );
+
     return { 
       meeting_id: meetingId, 
       meeting_number: meetingNumber,
@@ -132,7 +178,7 @@ async function addMeeting(meeting) {
     };
   } catch (error) {
     console.error("Error in addMeeting:", error.message);
-    throw error; // Re-throw so the caller knows there was an error
+    return { error: "Failed to add meeting. Please check your input and try again." };
   }
 }
 
@@ -212,4 +258,4 @@ const getMeetingById = async (meeting_id) => {
   return rows.length > 0 ? rows[0] : null;
 };
 
-module.exports = { getAllMeetings, addMeeting, updateMeeting, deleteMeeting, getMeetingById };
+module.exports = { getMeetingsBySchoolId, addMeeting, updateMeeting, deleteMeeting, getMeetingById };

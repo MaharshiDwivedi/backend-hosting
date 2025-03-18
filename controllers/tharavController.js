@@ -3,15 +3,32 @@ const path = require("path");
 const fs = require("fs");
 
 // Get all Tharav records
+// const getTharav = async (req, res) => {
+//     try {
+//         const results = await tharavModel.getAllTharav();
+//         res.json(results);
+//     } catch (err) {
+//         console.error("Error fetching Tharavs:", err);
+//         res.status(500).json({ error: "Database error" });
+//     }
+// };
+
 const getTharav = async (req, res) => {
     try {
-        const results = await tharavModel.getAllTharav();
+        const { meeting_number, school_id } = req.query;
+
+        if (!meeting_number || !school_id) {
+            return res.status(400).json({ error: "Meeting Number and School ID are required" });
+        }
+
+        const results = await tharavModel.getTharav(meeting_number, school_id);
         res.json(results);
     } catch (err) {
         console.error("Error fetching Tharavs:", err);
         res.status(500).json({ error: "Database error" });
     }
 };
+
 
 // Add a new Tharav record
 const addTharav = async (req, res) => {
@@ -87,43 +104,29 @@ const updateTharav = async (req, res) => {
     }
 };
 
-// Delete a Tharav record
+// Delete a Tharav record (soft delete)
 const deleteTharav = async (req, res) => {
     const { id } = req.params;
 
     try {
-        // Get record details to find the image path
-        const tharav = await tharavModel.getTharavById(id);
-        if (tharav && tharav.length > 0) {
-            const recordData = tharav[0].nirnay_reord.split("|");
-            const photoPath = recordData[4];
-
-            // Delete the image file if it exists
-            if (photoPath && photoPath.startsWith("/uploads/")) {
-                const filePath = path.join(__dirname, "..", photoPath);
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
-            }
-        }
-
-        // Delete the record from the database
         const result = await tharavModel.deleteTharav(id);
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: "Tharav not found" });
         }
 
-        res.json({ message: "Tharav deleted successfully" });
+        res.json({ message: "Tharav deleted successfully (soft delete)" });
     } catch (err) {
         console.error("Error deleting Tharav:", err);
         res.status(500).json({ error: "Database error" });
     }
 };
 
+
 // Export controller functions
 module.exports = {
-    getTharav,
+    // getTharav,
     addTharav,
     updateTharav,
     deleteTharav,
+    getTharav,
 };
